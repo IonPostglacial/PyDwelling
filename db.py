@@ -14,12 +14,18 @@ def items_from_name_list(name_list):
     return map(lambda e: Item(*e), enumerate(name_list))
 
 
+class DwellingException(Exception):
+    def __init__(self, msg: str):
+        super(DwellingException, self).__init__(msg)
+        self.message = msg
+
+
 class Table:
     def __init__(self, table_name: str, default_records):
         self.table_name = table_name
-        self.default_records = default_records
-        self.__default_records_by_id= { record.id : record for record in default_records }
-        self.__default_records_by_name = { record.name : record for record in default_records }
+        self.default_records = [record for record in default_records]
+        self.__default_records_by_id= { record.id : record for record in self.default_records }
+        self.__default_records_by_name = { record.name : record for record in self.default_records }
 
     def get_by_id(self, id: int):
         return self.__default_records_by_id[id]
@@ -28,8 +34,9 @@ class Table:
         try:
             item = self.__default_records_by_name[name]
         except KeyError:
-            print("Record ", name, " is unknown in ", self.table_name)
-            raise
+            def recordName(record):
+                return f"'{record.name}'"
+            raise DwellingException("Record '" + name + "' is unknown in '" + self.table_name + "'. Should be on of " + ", ".join(map(recordName, self.default_records)))
         else:
             return item
 
@@ -110,8 +117,8 @@ class Wood:
 
     @staticmethod
     def from_text_columns(db_row):
-        assert len(db_row) == 10
-        trimmed_rows = list(map(lambda s: s.trim(), db_row))
+        if len(db_row) != 10: raise DwellingException("Lines should contain exactly 10 elements.")
+        trimmed_rows = list(map(lambda s: s.strip(), db_row))
         return Wood(
             int(trimmed_rows[0]),
             parts_table.get_by_name(trimmed_rows[1]),
@@ -159,8 +166,11 @@ def get_all_wood_records():
 def add_wood_record(wood):
     with sqlite3.connect(db_name) as con:
         cur = con.cursor()
-        cur.execute("INSERT INTO Wood VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (wood.id, wood.part.id, wood.type1.id, wood.type2.id, wood.category.id, wood.the_class.id,
-            wood.material.id, wood.specie.id, wood.circumference, wood.length))
+        try:
+            cur.execute("INSERT INTO Wood VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (wood.id, wood.part.id, wood.type1.id, wood.type2.id, wood.category.id, wood.the_class.id,
+                wood.material.id, wood.specie.id, wood.circumference, wood.length))
+        except sqlite3.IntegrityError as e:
+            raise DwellingException(str(e))
 
     cur.close()
